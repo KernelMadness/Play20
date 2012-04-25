@@ -59,6 +59,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   }
 
   bootstrap.setPipelineFactory(new DefaultPipelineFactory)
+  bootstrap.setOption("child.tcpNoDelay", true);
 
   allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
 
