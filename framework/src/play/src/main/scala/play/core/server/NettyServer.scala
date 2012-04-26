@@ -59,7 +59,14 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   }
 
   bootstrap.setPipelineFactory(new DefaultPipelineFactory)
+
+  // hack
   bootstrap.setOption("child.tcpNoDelay", true);
+  val rcvsize = 1024 * 1024
+  bootstrap.setOption("receiveBufferSize", rcvsize) 
+  bootstrap.setOption("child.receiveBufferSize", rcvsize)
+  println(bootstrap.getOptions)
+  // end hack
 
   allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
 
