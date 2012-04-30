@@ -1,0 +1,9 @@
+repository
+samples
+logs
+tags
+framework/project/project
+framework/project/target
+framework/target
+framework/src/play/target
+.git*
