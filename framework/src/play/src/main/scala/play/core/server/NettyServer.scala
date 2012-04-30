@@ -65,6 +65,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   val rcvsize = 1024 * 1024
   bootstrap.setOption("receiveBufferSize", rcvsize) 
   bootstrap.setOption("child.receiveBufferSize", rcvsize)
+  bootstrap.setOption("backlog", 512000);
   println(bootstrap.getOptions)
   // end hack
 
