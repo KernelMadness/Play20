@@ -61,11 +61,12 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   bootstrap.setPipelineFactory(new DefaultPipelineFactory)
 
   // hack
-  bootstrap.setOption("child.tcpNoDelay", true);
-  val rcvsize = 1024 * 1024
-  bootstrap.setOption("receiveBufferSize", rcvsize) 
-  bootstrap.setOption("child.receiveBufferSize", rcvsize)
-  bootstrap.setOption("backlog", 512000);
+  val receiveSize = 1024 * 1024
+  val backlogSize = 1024 * 64
+  bootstrap.setOption("tcpNoDelay", true);
+  bootstrap.setOption("receiveBufferSize", receiveSize) 
+  bootstrap.setOption("child.receiveBufferSize", receiveSize)
+  bootstrap.setOption("backlog", backlogSize);
   println(bootstrap.getOptions)
   // end hack
 
