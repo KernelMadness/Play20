@@ -42,11 +42,11 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
 
   def applicationProvider = appProvider
 
-  private def newBootstrap = new ServerBootstrap(
-    new org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory(
-      Executors.newCachedThreadPool(),
-      Executors.newCachedThreadPool())
-    ) ~ { bootstrap =>
+  private def newBootstrap = {
+    val bootstrap = new ServerBootstrap(
+      new org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory(
+        Executors.newCachedThreadPool(),
+        Executors.newCachedThreadPool()))
     val receiveSize = 1024 * 1024
     val backlogSize = 1024 * 64
     bootstrap.setOption("tcpNoDelay", true);
