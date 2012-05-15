@@ -78,10 +78,80 @@ object Enumerator {
 
   def enumInput[E](e: Input[E]) = new Enumerator[E] {
     def apply[A](i: Iteratee[E, A]): Promise[Iteratee[E, A]] =
-      i.fold1{ 
+      i.fold{ 
         case Step.Cont(k) => Promise.pure(k(e))
         case _ =>  Promise.pure(i)
       }
+  }
+
+  def interleave[E](e1: Enumerator[E], es: Enumerator[E] *): Enumerator[E] = interleave(e1 +: es)
+
+  def interleave[E](es: Seq[Enumerator[E]]): Enumerator[E] = new Enumerator[E] {
+
+    import scala.concurrent.stm._
+
+    def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
+
+      val iter: Ref[Iteratee[E, A]] = Ref(it)
+      val attending: Ref[Option[Seq[Boolean]]] = Ref(Some(es.map(_ => true)))
+      val result = Promise[Iteratee[E, A]]()
+
+      def redeemResultIfNotYet(r:Iteratee[E, A]){
+        if (attending.single.transformIfDefined{ case Some(_) => None})
+            result.redeem(r)
+      }
+
+      def iteratee[EE <: E](f: Seq[Boolean] => Seq[Boolean]): Iteratee[EE, Unit] = {
+        def step(in: Input[EE]): Iteratee[EE, Unit] = {
+
+          val p = Promise[Iteratee[E, A]]()
+          val i = iter.single.swap(Iteratee.flatten(p))
+          in match {
+            case Input.El(_) | Input.Empty =>
+
+              val nextI = i.fold {
+
+                case Step.Cont(k) =>
+                  val n = k(in)
+                  n.fold {
+                    case Step.Cont(kk) =>
+                      p.redeem(Cont(kk))
+                      Promise.pure(Cont(step))
+                    case _ => 
+                      p.redeem(n)
+                      Promise.pure(Done((), Input.Empty: Input[EE]))
+                  }
+                case _ =>
+                  p.redeem(i)
+                  Promise.pure(Done((),Input.Empty: Input[EE]))
+
+              }
+              Iteratee.flatten(nextI)
+            case Input.EOF => {
+              if(attending.single.transformAndGet { _.map(f) }.forall(_ ==  false)){
+                p.redeem(Iteratee.flatten(i.feed(Input.EOF)))
+              } else {
+                p.redeem(i)
+              }
+              Done((), Input.Empty)
+            }
+          }
+        }
+        Cont(step)
+      }
+      val ps = es.zipWithIndex.map{ case (e,index) => e |>> iteratee[E](_.patch(index,Seq(true),1))}
+                     .map(_.flatMap(_.pureFold(any => ())))
+
+      Promise.sequence(ps).extend1 {
+        case Redeemed(_) => 
+          redeemResultIfNotYet(iter.single())
+        case Thrown(e) => result.throwing(e)
+
+      }
+
+      result
+    }
+
   }
 
   def interleave[E1, E2 >: E1](e1: Enumerator[E1], e2: Enumerator[E2]): Enumerator[E2] = new Enumerator[E2] {
@@ -90,43 +160,47 @@ object Enumerator {
 
     def apply[A](it: Iteratee[E2, A]): Promise[Iteratee[E2, A]] = {
 
-      var iter: Ref[Iteratee[E2, A]] = Ref(it)
+      val iter: Ref[Iteratee[E2, A]] = Ref(it)
       val attending: Ref[Option[(Boolean, Boolean)]] = Ref(Some(true, true))
       val result = Promise[Iteratee[E2, A]]()
 
-      def redeemResultIfNotYet() = {
-        val toRedeem = atomic { implicit transaction =>
-          if (attending().isDefined) {
-            attending() = None
-            val it = iter()
-            Some(it)
-          } else None
-        }
-        toRedeem.foreach(result.redeem(_))
+      def redeemResultIfNotYet(r:Iteratee[E2, A]){
+        if (attending.single.transformIfDefined{ case Some(_) => None})
+            result.redeem(r)
       }
 
       def iteratee[EE <: E2](f: ((Boolean, Boolean)) => (Boolean, Boolean)): Iteratee[EE, Unit] = {
         def step(in: Input[EE]): Iteratee[EE, Unit] = {
+
+          val p = Promise[Iteratee[E2, A]]()
+          val i = iter.single.swap(Iteratee.flatten(p))
           in match {
             case Input.El(_) | Input.Empty =>
-              val p = Promise[Iteratee[E2, A]]()
-              val i = iter.single.swap(Iteratee.flatten(p))
-              val nextI = Iteratee.flatten(i.feed(in))
-              p.redeem(nextI)
-              nextI.pureFlatFold(
-                (a, e) => {
-                  redeemResultIfNotYet()
-                  Done((), Input.Empty: Input[EE])
-                },
-                k => Cont(step),
-                (msg, e) => {
-                  redeemResultIfNotYet()
-                  Error(msg, Input.Empty: Input[EE])
-                })
 
+              val nextI = i.fold {
+
+                case Step.Cont(k) =>
+                  val n = k(in)
+                  n.fold {
+                    case Step.Cont(kk) =>
+                      p.redeem(Cont(kk))
+                      Promise.pure(Cont(step))
+                    case _ => 
+                      p.redeem(n)
+                      Promise.pure(Done((), Input.Empty: Input[EE]))
+                  }
+                case _ =>
+                  p.redeem(i)
+                  Promise.pure(Done((),Input.Empty: Input[EE]))
+
+              }
+              Iteratee.flatten(nextI)
             case Input.EOF => {
-              if (attending.single.transformAndGet { _.map(f) } == Some((false, false)))
-                redeemResultIfNotYet()
+              if(attending.single.transformAndGet { _.map(f) } == Some((false, false))){
+                p.redeem(Iteratee.flatten(i.feed(Input.EOF)))
+              } else {
+                p.redeem(i)
+              }
               Done((), Input.Empty)
             }
           }
@@ -138,8 +212,10 @@ object Enumerator {
       val itE2 = iteratee[E2] { case (l, r) => (l, false) }
       val r1 = e1 |>> itE1
       val r2 = e2 |>> itE2
-      r1.flatMap(_ => r2).extend1 {
-        case Redeemed(_) => redeemResultIfNotYet()
+      r1.flatMap(_.pureFold(any => ()))
+        .flatMap(_ => r2.flatMap(_.pureFold(any => ()))).extend1 {
+        case Redeemed(_) => 
+          redeemResultIfNotYet(iter.single())
         case Thrown(e) => result.throwing(e)
 
       }
@@ -182,31 +258,29 @@ object Enumerator {
         }
         def push(item: E): Boolean = {
           if (iteratee != null) {
-            iteratee = iteratee.pureFlatFold[E, A](
+            iteratee = iteratee.pureFlatFold[E, A] {
 
-              // DONE
-              (a, in) => {
+              case Step.Done(a, in) => {
                 onComplete()
                 Done(a, in)
-              },
+              }
 
-              // CONTINUE
-              k => {
+              case Step.Cont(k) => {
                 val next = k(Input.El(item))
-                next.pureFlatFold(
-                  (a, in) => {
+                next.pureFlatFold {
+                  case Step.Done(a, in) => {
                     onComplete()
                     next
-                  },
-                  _ => next,
-                  (_, _) => next)
-              },
+                  }
+                  case _ => next
+                }
+              }
 
-              // ERROR
-              (e, in) => {
+              case Step.Error(e, in) => {
                 onError(e, in)
                 Error(e, in)
-              })
+              }
+            }
             true
           } else {
             false
@@ -267,7 +341,7 @@ object Enumerator {
 
     def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
 
-      def step(it: Iteratee[E, A]): Promise[Iteratee[E,A]] = it.fold1{
+      def step(it: Iteratee[E, A]): Promise[Iteratee[E,A]] = it.fold {
           case Step.Done(a, e) => Promise.pure(Done(a,e))
           case Step.Cont(k) => inner[A](step,k)
           case Step.Error(msg, e) => Promise.pure(Error(msg,e))
@@ -287,7 +361,7 @@ object Enumerator {
 
     def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
 
-      def step(it: Iteratee[E, A], state:S): Promise[Iteratee[E,A]] = it.fold1{
+      def step(it: Iteratee[E, A], state:S): Promise[Iteratee[E,A]] = it.fold{
           case Step.Done(a, e) => Promise.pure(Done(a,e))
           case Step.Cont(k) => inner[A](step,state,k)
           case Step.Error(msg, e) => Promise.pure(Error(msg,e))
@@ -306,7 +380,7 @@ object Enumerator {
 
       def step(it: Iteratee[E, A], initial: Boolean = false) {
 
-        val next = it.fold1 {
+        val next = it.fold {
           case Step.Cont(k) => {
             retriever(initial).map {
               case None => {
@@ -345,7 +419,7 @@ object Enumerator {
 
       def step(it: Iteratee[E, A]) {
 
-        val next = it.fold1{
+        val next = it.fold{
           case Step.Cont(k) => {
             retriever().map {
               case None => {
@@ -412,11 +486,11 @@ object Enumerator {
 
   private def enumerate[E, A]: (Seq[E], Iteratee[E, A]) => Promise[Iteratee[E, A]] = { (l, i) =>
     l.foldLeft(Promise.pure(i))((i, e) =>
-      i.flatMap(it => it.pureFold((_, _) => it,
-        k => k(Input.El(e)),
-        (_, _) => it)))
+      i.flatMap(it => it.pureFold{ 
+        case Step.Cont(k) => k(Input.El(e))
+        case _ => it
+      }))
   }
-
 }
 
 class PushEnumerator[E] private[iteratee] (
@@ -445,31 +519,29 @@ class PushEnumerator[E] private[iteratee] (
 
   def push(item: E): Boolean = {
     if (iteratee != null) {
-      iteratee = iteratee.pureFlatFold[E, Any](
+      iteratee = iteratee.pureFlatFold[E, Any] {
 
-        // DONE
-        (a, in) => {
+        case Step.Done(a, in) => {
           onComplete()
           Done(a, in)
-        },
+        }
 
-        // CONTINUE
-        k => {
+        case Step.Cont(k) => {
           val next = k(Input.El(item))
-          next.pureFlatFold(
-            (a, in) => {
+          next.pureFlatFold {
+            case Step.Done(a, in) => {
               onComplete()
               next
-            },
-            _ => next,
-            (_, _) => next)
-        },
+            }
+            case _ => next
+          }
+        }
 
-        // ERROR
-        (e, in) => {
+        case Step.Error(e, in) => {
           onError(e, in)
           Error(e, in)
-        })
+        }
+      }
       true
     } else {
       false
