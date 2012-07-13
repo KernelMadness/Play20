@@ -50,6 +50,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
     val receiveSize = 1024 * 1024
     val backlogSize = 1024 * 64
     bootstrap.setOption("tcpNoDelay", true);
+    bootstrap.setOption("child.tcpNoDelay", true);
     bootstrap.setOption("receiveBufferSize", receiveSize)
     bootstrap.setOption("child.receiveBufferSize", receiveSize)
     bootstrap.setOption("backlog", backlogSize);
