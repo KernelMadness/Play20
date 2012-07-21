@@ -1,7 +1,6 @@
 package play.api
 
 import play.core._
-import play.utils.{ Threads }
 
 import play.api.mvc._
 
@@ -58,9 +57,7 @@ object Play {
 
     _currentApp = app
 
-    Threads.withContextClassLoader(classloader(app)) {
-      app.plugins.foreach(_.onStart)
-    }
+    app.plugins.foreach(_.onStart)
 
     app.mode match {
       case Mode.Test =>
@@ -73,11 +70,9 @@ object Play {
    * Stops the current application.
    */
   def stop() {
-    Option(_currentApp).map { app =>
-      Threads.withContextClassLoader(classloader(app)) {
-        app.plugins.foreach { p =>
-          try { p.onStop } catch { case _ => }
-        }
+    Option(_currentApp).map {
+      _.plugins.foreach { p =>
+        try { p.onStop } catch { case _ => }
       }
     }
     _currentApp = null

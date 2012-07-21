@@ -138,24 +138,28 @@ public class WS {
         }
 
         private Promise<Response> execute() {
-            final scala.concurrent.Promise<Response> scalaPromise = scala.concurrent.Promise$.MODULE$.<Response>apply();
+            final play.api.libs.concurrent.STMPromise<Response> scalaPromise = new play.api.libs.concurrent.STMPromise<Response>();
             try {
                 WS.client.executeRequest(request, new AsyncCompletionHandler<com.ning.http.client.Response>() {
                     @Override
                     public com.ning.http.client.Response onCompleted(com.ning.http.client.Response response) {
                         final com.ning.http.client.Response ahcResponse = response;
-                        scalaPromise.success(new Response(ahcResponse));
+                        scalaPromise.redeem(new scala.runtime.AbstractFunction0<Response>() {
+                            public Response apply() {
+                                return new Response(ahcResponse);
+                            }
+                        });
                         return response;
                     }
                     @Override
                     public void onThrowable(Throwable t) {
-                        scalaPromise.failure(t);
+                        scalaPromise.throwing(t);
                     }
                 });
             } catch (IOException exception) {
-                scalaPromise.failure(exception);
+                scalaPromise.throwing(exception);
             }
-            return new Promise<Response>(scalaPromise.future());
+            return new Promise<Response>(scalaPromise);
         }
     }
 

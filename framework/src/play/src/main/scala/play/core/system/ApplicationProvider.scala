@@ -67,6 +67,21 @@ class TestApplication(application: Application) extends ApplicationProvider {
 }
 
 /**
+ * generic interface that helps the communication between a Play Application
+ * and the underlying SBT infrastructre
+ */
+trait SBTLink {
+  def reload: Either[Throwable, Option[ClassLoader]]
+  def findSource(className: String): Option[File]
+  def projectPath: File
+  def runTask(name: String): Option[Any]
+  def forceReload()
+  def definedTests: Seq[String]
+  def runTests(only: Seq[String], callback: Any => Unit): Either[String, Boolean]
+  def markdownToHtml(markdown: String, link: String => (String, String)): String
+}
+
+/**
  * represents an application that can be reloaded in Dev Mode
  */
 class ReloadableApplication(sbtLink: SBTLink) extends ApplicationProvider {
@@ -92,13 +107,7 @@ class ReloadableApplication(sbtLink: SBTLink) extends ApplicationProvider {
 
       Await.result(Future {
 
-        val reloaded = sbtLink.reload match {
-          case t: Throwable => Left(t)
-          case cl: ClassLoader => Right(Some(cl))
-          case null => Right(None)
-        }
-
-        reloaded.right.flatMap { maybeClassLoader =>
+        sbtLink.reload.right.flatMap { maybeClassLoader =>
 
           val maybeApplication: Option[Either[Throwable, Application]] = maybeClassLoader.map { classloader =>
             try {
@@ -110,7 +119,7 @@ class ReloadableApplication(sbtLink: SBTLink) extends ApplicationProvider {
               }
 
               val newApplication = new Application(path, classloader, Some(new SourceMapper {
-                def sourceOf(className: String) = Option(sbtLink.findSource(className))
+                def sourceOf(className: String) = sbtLink.findSource(className)
               }), Mode.Dev)
 
               Play.start(newApplication)
@@ -280,8 +289,8 @@ class ReloadableApplication(sbtLink: SBTLink) extends ApplicationProvider {
               Ok(
                 views.html.play20.manual(
                   page,
-                  Some(sbtLink.markdownToHtml(pageSource.slurpString/*, linkRender*/)),
-                  maybeSidebar.map(s => sbtLink.markdownToHtml(s.slurpString/*, linkRender*/))
+                  Some(sbtLink.markdownToHtml(pageSource.slurpString, linkRender)),
+                  maybeSidebar.map(s => sbtLink.markdownToHtml(s.slurpString, linkRender))
                 )
               )
             }

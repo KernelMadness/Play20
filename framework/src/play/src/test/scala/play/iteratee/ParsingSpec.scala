@@ -1,8 +1,6 @@
 package play.api.libs.iteratee
 
-import play.api.libs.concurrent.execution.defaultContext
 import Parsing._
-import play.api.libs.concurrent._
 
 import org.specs2.mutable._
 
@@ -15,7 +13,7 @@ object ParsingSpec extends Specification {
       val data = Enumerator(List("xx", "kxckikixckikio", "cockik", "isdodskikisd", "ksdloii").map(_.getBytes): _*)
       val parsed = data |>> Parsing.search("kiki".getBytes).transform(Iteratee.fold(List.empty[MatchInfo[Array[Byte]]]) { (s, c) => s :+ c })
 
-      val result = parsed.flatMap(_.run).await.get.map {
+      val result = parsed.flatMap(_.run).value.get.map {
         case Matched(kiki) => "Matched(" + new String(kiki) + ")"
         case Unmatched(data) => "Unmatched(" + new String(data) + ")"
       }.mkString(", ")
@@ -30,7 +28,7 @@ object ParsingSpec extends Specification {
       val data = Enumerator(List("xx", "kxckikixcki", "k", "kicockik", "isdkikodskikisd", "ksdlokiikik", "i").map(_.getBytes): _*)
       val parsed = data |>> Parsing.search("kiki".getBytes).transform(Iteratee.fold(List.empty[MatchInfo[Array[Byte]]]) { (s, c) => s :+ c })
 
-      val result = parsed.flatMap(_.run).await.get.map {
+      val result = parsed.flatMap(_.run).value.get.map {
         case Matched(kiki) => "Matched(" + new String(kiki) + ")"
         case Unmatched(data) => "Unmatched(" + new String(data) + ")"
       }.mkString(", ")

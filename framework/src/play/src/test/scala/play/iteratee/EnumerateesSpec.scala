@@ -1,9 +1,5 @@
 package play.api.libs.iteratee
 
-import play.api.libs.concurrent.execution.defaultContext
-
-import play.api.libs.concurrent._
-
 import org.specs2.mutable._
 
 object EnumerateesSpec extends Specification {
@@ -14,7 +10,7 @@ object EnumerateesSpec extends Specification {
       
       val drop3AndConsume = Enumeratee.drop[String](3) &>>  Iteratee.consume[String]()
       val enumerator = Enumerator(Range(1,20).map(_.toString) :_*)  
-      (enumerator |>> drop3AndConsume).flatMap(_.run).value1.get must equalTo(Range(4,20).map(_.toString).mkString)
+      (enumerator |>> drop3AndConsume).flatMap(_.run).value.get must equalTo(Range(4,20).map(_.toString).mkString)
 
     }
 
@@ -26,7 +22,7 @@ object EnumerateesSpec extends Specification {
       
       val drop3AndConsume = Enumeratee.dropWhile[String](_ != "4") &>>  Iteratee.consume[String]()
       val enumerator = Enumerator(Range(1,20).map(_.toString) :_*)  
-      (enumerator |>> drop3AndConsume).flatMap(_.run).value1.get must equalTo(Range(4,20).map(_.toString).mkString)
+      (enumerator |>> drop3AndConsume).flatMap(_.run).value.get must equalTo(Range(4,20).map(_.toString).mkString)
 
     }
 
@@ -38,7 +34,7 @@ object EnumerateesSpec extends Specification {
       
       val take3AndConsume = Enumeratee.take[String](3) &>>  Iteratee.consume()
       val enumerator = Enumerator(Range(1,20).map(_.toString) :_*)  
-      (enumerator |>> take3AndConsume).flatMap(_.run).value1.get must equalTo(List(1,2,3).map(_.toString).mkString)
+      (enumerator |>> take3AndConsume).flatMap(_.run).value.get must equalTo(List(1,2,3).map(_.toString).mkString)
 
     }
 
@@ -46,7 +42,7 @@ object EnumerateesSpec extends Specification {
       
       val take3AndConsume = (Enumeratee.take[String](3) &>>  Iteratee.consume()).flatMap(_ => Iteratee.consume())
       val enumerator = Enumerator(Range(1,20).map(_.toString) :_*)  
-      (enumerator |>> take3AndConsume).flatMap(_.run).value1.get must equalTo(Range(4,20).map(_.toString).mkString)
+      (enumerator |>> take3AndConsume).flatMap(_.run).value.get must equalTo(Range(4,20).map(_.toString).mkString)
 
     }
 
@@ -57,14 +53,14 @@ object EnumerateesSpec extends Specification {
     "pass chunks until condition is not met" in {
       val take3AndConsume = Enumeratee.takeWhile[String](_ != "4" ) &>>  Iteratee.consume()
       val enumerator = Enumerator(Range(1,20).map(_.toString) :_*)  
-      (enumerator |>> take3AndConsume).flatMap(_.run).value1.get must equalTo(List(1,2,3).map(_.toString).mkString)
+      (enumerator |>> take3AndConsume).flatMap(_.run).value.get must equalTo(List(1,2,3).map(_.toString).mkString)
     }
 
     "passes along what's left of chunks after taking" in {
       
       val take3AndConsume = (Enumeratee.takeWhile[String](_ != "4") &>>  Iteratee.consume()).flatMap(_ => Iteratee.consume())
       val enumerator = Enumerator(Range(1,20).map(_.toString) :_*)  
-      (enumerator |>> take3AndConsume).flatMap(_.run).value1.get must equalTo(Range(4,20).map(_.toString).mkString)
+      (enumerator |>> take3AndConsume).flatMap(_.run).value.get must equalTo(Range(4,20).map(_.toString).mkString)
 
     }
 
@@ -77,7 +73,7 @@ object EnumerateesSpec extends Specification {
       
       val take3AndConsume = Traversable.take[String](3) &>>  Iteratee.consume()
       val enumerator = Enumerator("he","ybbb","bbb")  
-      (enumerator |>> take3AndConsume).flatMap(_.run).value1.get must equalTo("hey")
+      (enumerator |>> take3AndConsume).flatMap(_.run).value.get must equalTo("hey")
 
     }
 
@@ -85,7 +81,7 @@ object EnumerateesSpec extends Specification {
       
       val take3AndConsume = (Traversable.take[String](3) &>>  Iteratee.consume()).flatMap(_ => Iteratee.consume())
       val enumerator = Enumerator("he","ybbb","bbb")  
-      (enumerator |>> take3AndConsume).flatMap(_.run).value1.get must equalTo("bbbbbb")
+      (enumerator |>> take3AndConsume).flatMap(_.run).value.get must equalTo("bbbbbb")
 
     }
 
@@ -97,7 +93,7 @@ object EnumerateesSpec extends Specification {
       
       val add1AndConsume = Enumeratee.map[Int](i => List(i+1)) &>>  Iteratee.consume()
       val enumerator = Enumerator(1,2,3,4)  
-      (enumerator |>> add1AndConsume).flatMap(_.run).value1.get must equalTo(Seq(2,3,4,5))
+      (enumerator |>> add1AndConsume).flatMap(_.run).value.get must equalTo(Seq(2,3,4,5))
 
     }
 
@@ -124,7 +120,7 @@ object EnumerateesSpec extends Specification {
       
       val takesOnlyStringsWithLessThan4Chars = Enumeratee.filter[String](_.length < 4) &>>  Iteratee.consume()
       val enumerator = Enumerator("One","Two","Three","Four", "Five", "Six")  
-      (enumerator |>> takesOnlyStringsWithLessThan4Chars).flatMap(_.run).value1.get must equalTo("OneTwoSix")
+      (enumerator |>> takesOnlyStringsWithLessThan4Chars).flatMap(_.run).value.get must equalTo("OneTwoSix")
 
     }
 
@@ -136,7 +132,7 @@ object EnumerateesSpec extends Specification {
       
       val takesOnlyStringsWithLessThan4Chars = Enumeratee.collect[String]{ case e@("One" | "Two" | "Six") => e.toUpperCase } &>>  Iteratee.consume()
       val enumerator = Enumerator("One","Two","Three","Four", "Five", "Six")  
-      (enumerator |>> takesOnlyStringsWithLessThan4Chars).flatMap(_.run).value1.get must equalTo("ONETWOSIX")
+      (enumerator |>> takesOnlyStringsWithLessThan4Chars).flatMap(_.run).value.get must equalTo("ONETWOSIX")
 
     }
 
@@ -156,7 +152,7 @@ object EnumerateesSpec extends Specification {
         Enumeratee.grouped(folderIteratee) ><>
         Enumeratee.map(List(_)) |>>
         Iteratee.consume()
-      result.flatMap(_.run).value1.get must equalTo(List("Hello","World","!"))
+      result.flatMap(_.run).value.get must equalTo(List("Hello","World","!"))
 
     }
 
@@ -168,7 +164,7 @@ object EnumerateesSpec extends Specification {
       val upToSpace = Traversable.splitOnceAt[String,Char](c => c != '\n')  &>> Iteratee.consume()
 
       val result = (Enumerator("dasdasdas ", "dadadasda\nshouldb\neinnext") &> Enumeratee.grouped(upToSpace) ><> Enumeratee.map(_+"|")) |>> Iteratee.consume[String]()
-      result.flatMap(_.run).value1.get must equalTo("dasdasdas dadadasda|shouldb|einnext|")
+      result.flatMap(_.run).value.get must equalTo("dasdasdas dadadasda|shouldb|einnext|")
     }
   }
 
@@ -181,7 +177,7 @@ object EnumerateesSpec extends Specification {
         Enumeratee.map(List(_)) |>>
         Iteratee.consume()
 
-      result.flatMap(_.run).value1.get must equalTo(List(1,3,6,10))
+      result.flatMap(_.run).value.get must equalTo(List(1,3,6,10))
 
     }
 

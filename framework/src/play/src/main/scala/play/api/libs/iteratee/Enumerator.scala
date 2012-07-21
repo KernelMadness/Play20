@@ -2,69 +2,32 @@ package play.api.libs.iteratee
 
 import play.api.libs.concurrent._
 
-import play.api.libs.concurrent.execution.defaultContext
-
 /**
- * A producer which pushes input to an [[play.api.libs.iteratee.Iteratee]].
+ * Pushes input to an [[play.api.libs.iteratee.Iteratee]]
  * @type E Type of the input
  */
+
 trait Enumerator[E] {
   parent =>
-   
-   /*
-   * Attaches this Enumerator to an [[play.api.libs.iteratee.Iteratee]], driving the
-   * Iteratee to (asynchronously) consume the input. The Iteratee may enter its
-   * [[play.api.libs.iteratee.Done]] or [[play.api.libs.iteratee.Error]]
-   * state, or it may be left in a [[play.api.libs.iteratee.Cont]] state (allowing it
-   * to consume more input after that sent by the enumerator).
-   *
-   * If the Iteratee reaches a [[play.api.libs.iteratee.Done]] state, it will
-   * contain a computed result and the remaining (unconsumed) input.
+
+  /**
+   * Apply this Enumerator to an Iteratee
    */
   def apply[A](i: Iteratee[E, A]): Promise[Iteratee[E, A]]
- 
-  /*
-   * Alias for `apply`, produces input driving the given [[play.api.libs.iteratee.Iteratee]]
-   * to consume it.
+
+  /**
+   * Alias for `apply`
    */
   def |>>[A](i: Iteratee[E, A]): Promise[Iteratee[E, A]] = apply(i)
 
-   /**
-    * Attaches this Enumerator to an [[play.api.libs.iteratee.Iteratee]], driving the
-    * Iteratee to (asynchronously) consume the enumerator's input. If the Iteratee does not
-    * reach a [[play.api.libs.iteratee.Done]] or [[play.api.libs.iteratee.Error]]
-    * state when the Enumerator finishes, this method forces one of those states by
-    * feeding `Input.EOF` to the Iteratee.
-    *
-    * If the iteratee is left in a [[play.api.libs.iteratee.Done]]
-    * state then the promise is completed with the iteratee's result.
-    * If the iteratee is left in an [[play.api.libs.iteratee.Error]] state, then the
-    * promise is completed with a [[java.lang.RuntimeException]] containing the
-    * iteratee's error message.
-    *
-    * Unlike `apply` or `|>>`, this method does not allow you to access the
-    * unconsumed input.
-    */
   def |>>>[A](i: Iteratee[E, A]): Promise[A] = apply(i).flatMap(_.run)
 
-  /**
-   * Alias for `|>>>`; drives the iteratee to consume the enumerator's
-   * input, adding an Input.EOF at the end of the input. Returns either a result
-   * or an exception.
-   */
   def run[A](i: Iteratee[E, A]): Promise[A] = |>>>(i)
-  
- /** 
-  * A variation on `apply` or `|>>` which returns the state of the iteratee rather
-  * than the iteratee itself. This can make your code a little shorter.
-  */
+
   def |>>|[A](i: Iteratee[E, A]): Promise[Step[E,A]] = apply(i).flatMap(_.unflatten)
-  
-  /*
-   * Sequentially combine this Enumerator with another Enumerator. The resulting enumerator
-   * will produce both input streams, this one first, then the other.
-   * Note: the current implementation will break if the first enumerator
-   * produces an Input.EOF.
+
+  /**
+   * Sequentially combine this Enumerator with another Enumerator
    */
   def andThen(e: Enumerator[E]): Enumerator[E] = new Enumerator[E] {
     def apply[A](i: Iteratee[E, A]): Promise[Iteratee[E, A]] = parent.apply(i).flatMap(e.apply) //bad implementation, should remove Input.EOF in the end of first
@@ -72,13 +35,10 @@ trait Enumerator[E] {
 
   def interleave[B >: E](other: Enumerator[B]): Enumerator[B] = Enumerator.interleave(this, other)
 
-  /**
-   * Alias for interleave
-   */
   def >-[B >: E](other: Enumerator[B]): Enumerator[B] = interleave(other)
 
   /**
-   * Compose this Enumerator with an Enumeratee. Alias for through
+   * Compose this Enumerator with an Enumeratee
    */
   def &>[To](enumeratee: Enumeratee[E, To]): Enumerator[To] = new Enumerator[To] {
 
@@ -91,30 +51,17 @@ trait Enumerator[E] {
 
   }
 
-  /**
-   * Compose this Enumerator with an Enumeratee
-   */
   def through[To](enumeratee: Enumeratee[E, To]): Enumerator[To] = &>(enumeratee)
 
- /**
-  * Alias for `andThen`
-  */
-  def >>>(e: Enumerator[E]): Enumerator[E] = andThen(e)
-  
   /**
-   * maps the given function f onto parent Enumerator
-   * @param f function to map
-   * @return enumerator
+   * Alias for `andThen`
    */
+  def >>>(e: Enumerator[E]): Enumerator[E] = andThen(e)
+
   def map[U](f: E => U): Enumerator[U] = parent &> Enumeratee.map[E](f)
 
   def mapInput[U](f: Input[E] => Input[U]) = parent &> Enumeratee.mapInput[E](f)
 
-  /**
-   * flatmaps the given function f onto parent Enumerator
-   * @param f function to map
-   * @return enumerator
-   */
   def flatMap[U](f: E => Enumerator[U]): Enumerator[U] = {
     new Enumerator[U] {
       def apply[A](iteratee: Iteratee[U, A]): Promise[Iteratee[U, A]] = {
@@ -126,10 +73,7 @@ trait Enumerator[E] {
   }
 
 }
-/**
- * Enumerator is the source that pushes input into a given iteratee. 
- * It enumerates some input into the iteratee and eventually returns the new state of that iteratee. 
- */
+
 object Enumerator {
 
   def flatten[E](eventuallyEnum: Promise[Enumerator[E]]): Enumerator[E] = new Enumerator[E] {
@@ -138,10 +82,6 @@ object Enumerator {
 
   }
 
-  /** Creates an enumerator which produces the one supplied
-   * input and nothing else. This enumerator will NOT
-   * automatically produce Input.EOF after the given input.
-   */
   def enumInput[E](e: Input[E]) = new Enumerator[E] {
     def apply[A](i: Iteratee[E, A]): Promise[Iteratee[E, A]] =
       i.fold{ 
@@ -171,7 +111,7 @@ object Enumerator {
         def step(in: Input[EE]): Iteratee[EE, Unit] = {
 
           val p = Promise[Iteratee[E, A]]()
-          val i = iter.single.swap(Iteratee.flatten(p.future))
+          val i = iter.single.swap(Iteratee.flatten(p))
           in match {
             case Input.El(_) | Input.Empty =>
 
@@ -215,7 +155,7 @@ object Enumerator {
 
       }
 
-      result.future
+      result
     }
 
   }
@@ -239,7 +179,7 @@ object Enumerator {
         def step(in: Input[EE]): Iteratee[EE, Unit] = {
 
           val p = Promise[Iteratee[E2, A]]()
-          val i = iter.single.swap(Iteratee.flatten(p.future))
+          val i = iter.single.swap(Iteratee.flatten(p))
           in match {
             case Input.El(_) | Input.Empty =>
 
@@ -284,7 +224,7 @@ object Enumerator {
         case Thrown(e) => result.throwing(e)
 
       }
-      result.future
+      result
     }
 
   }
@@ -312,7 +252,7 @@ object Enumerator {
 
     def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
       var iteratee: Iteratee[E, A] = it
-      var promise: scala.concurrent.Promise[Iteratee[E, A]] = Promise[Iteratee[E, A]]()
+      var promise: Promise[Iteratee[E, A]] with Redeemable[Iteratee[E, A]] = new STMPromise[Iteratee[E, A]]()
 
       val pushee = new Pushee[E] {
         def close() {
@@ -354,7 +294,7 @@ object Enumerator {
         }
       }
       onStart(pushee)
-      promise.future
+      promise
     }
 
   }
@@ -472,7 +412,7 @@ object Enumerator {
         }
       }
       step(it, true)
-      iterateeP.future
+      iterateeP
     }
   }
 
@@ -513,7 +453,7 @@ object Enumerator {
       }
 
       step(it)
-      iterateeP.future
+      iterateeP
     }
   }
 
@@ -574,9 +514,9 @@ class PushEnumerator[E] private[iteratee] (
   def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
     onStart()
     iteratee = it.asInstanceOf[Iteratee[E, _]]
-    val newPromise = Promise[Iteratee[E, A]]()
+    val newPromise = new STMPromise[Iteratee[E, A]]()
     promise = newPromise.asInstanceOf[Promise[Iteratee[E, _]] with Redeemable[Iteratee[E, _]]]
-    newPromise.future
+    newPromise
   }
 
   def close() {
