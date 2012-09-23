@@ -44,10 +44,21 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
 
   def applicationProvider = appProvider
 
-  private def newBootstrap = new ServerBootstrap(
+  private def newBootstrap = {
+    val bootstrap = new ServerBootstrap(
     new org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory(
       Executors.newCachedThreadPool(),
       Executors.newCachedThreadPool()))
+    val receiveSize = 1024 * 1024
+    val backlogSize = 1024 * 64
+    bootstrap.setOption("tcpNoDelay", true);
+    bootstrap.setOption("child.tcpNoDelay", true);
+    bootstrap.setOption("receiveBufferSize", receiveSize)
+    bootstrap.setOption("child.receiveBufferSize", receiveSize)
+    bootstrap.setOption("backlog", backlogSize);
+    println(bootstrap.getOptions)
+    bootstrap
+  }
 
   class PlayPipelineFactory(secure: Boolean = false) extends ChannelPipelineFactory {
     def getPipeline = {
